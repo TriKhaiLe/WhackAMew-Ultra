@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Web Audio Sound Generator</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 32px 20px; background: #121212; color: #fff; }
+    h1 { margin: 0 0 8px; }
+    h2 { margin: 28px 0 8px; font-size: 1.1rem; }
+    p { color: #bdbdbd; margin: 0 0 12px; }
+    label { display: block; margin: 14px 0 6px; font-weight: 600; }
+    input, textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid #444; border-radius: 8px; background: #1e1e1e; color: #fff; font: inherit; }
+    textarea { min-height: 220px; resize: vertical; font-family: Consolas, monospace; font-size: 13px; line-height: 1.45; }
+    .row, .btn-group { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .duration { max-width: 180px; }
+    .prompt-box { padding: 18px; border: 1px solid #333; border-radius: 10px; background: #181818; }
+    .status { min-height: 1.4em; color: #8ee6b0; }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    button:active { transform: scale(0.96); }
+    .btn-play { background: #3b82f6; color: #fff; }
+    .btn-download { background: #10b981; color: #fff; }
+    .btn-copy { background: #f59e0b; color: #171717; }
+    .btn-run { background: #8b5cf6; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <h1>Web Audio Sound Generator</h1>
+  <p>Describe a sound, ask an AI for Web Audio code, then preview and export the result.</p>
+
+  <section class="prompt-box">
+    <h2>1. Create an AI prompt</h2>
+    <label for="soundDescription">Sound description</label>
+    <textarea id="soundDescription" rows="3" placeholder="Example: a cheerful magical item pickup sound with four ascending notes"></textarea>
+    <div class="row">
+      <div class="duration">
+        <label for="duration">Duration (seconds)</label>
+        <input id="duration" type="number" min="0.1" step="0.1" placeholder="Auto">
+      </div>
+      <div>
+        <label for="filename">WAV filename</label>
+        <input id="filename" value="generated-sound.wav">
+      </div>
+    </div>
+    <label for="promptOutput">Generated prompt</label>
+    <textarea id="promptOutput" rows="8" readonly></textarea>
+    <div class="btn-group">
+      <button class="btn-copy" onclick="copyPrompt()">Copy prompt</button>
+      <button onclick="generatePrompt()">Refresh prompt</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Paste the AI-generated synthesis code</h2>
+    <p>Paste the function body that creates Web Audio nodes using <code>ctx</code> and connects the final node to <code>dest</code>.</p>
+    <textarea id="codeInput" spellcheck="false"></textarea>
+    <p id="status" class="status" role="status"></p>
+    <div class="btn-group">
+      <button class="btn-run" onclick="playSound()">Preview sound</button>
+      <button class="btn-download" onclick="exportSound()">Download WAV</button>
+    </div>
+  </section>
+
+  <script>
+    const DEFAULT_CODE = `const notes = [523.25, 659.25, 783.99, 1046.50];
+const stepTime = 0.06;
+
+notes.forEach((freq, index) => {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  const startTime = ctx.currentTime + index * stepTime;
+  const noteDuration = index === notes.length - 1 ? 0.3 : 0.15;
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(0.25, startTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + noteDuration);
+  osc.connect(gain);
+  gain.connect(dest);
+  osc.start(startTime);
+  osc.stop(startTime + noteDuration);
+});`;
+
+    function getSynthesize() {
+      const code = document.getElementById("codeInput").value.trim();
+      if (!code) throw new Error("Paste synthesis code first.");
+      return new Function("ctx", "dest", code);
+    }
+
+    function getDuration() {
+      const value = Number(document.getElementById("duration").value);
+      return value > 0 ? value : 3;
+    }
+
+    function setStatus(message, isError = false) {
+      const status = document.getElementById("status");
+      status.textContent = message;
+      status.style.color = isError ? "#ff8a8a" : "#8ee6b0";
+    }
+
+    function generatePrompt() {
+      const description = document.getElementById("soundDescription").value.trim() || "a satisfying game sound effect";
+      const duration = document.getElementById("duration").value || "auto-detected (keep it under 3 seconds)";
+      document.getElementById("promptOutput").value = `Write JavaScript Web Audio API synthesis code for this sound: ${description}
+
+Target duration: ${duration}.
+
+Return only the function body, without markdown fences or a function declaration. The body will run inside new Function("ctx", "dest", code), where ctx is an AudioContext or OfflineAudioContext and dest is the output AudioNode. Use only Web Audio API nodes, schedule everything from ctx.currentTime, and connect the final node to dest. Keep the sound self-contained and avoid external files, DOM APIs, timers, and user interaction. Make sure every oscillator or source is started and stopped.`;
+    }
+
+    async function copyPrompt() {
+      try {
+        generatePrompt();
+        await navigator.clipboard.writeText(document.getElementById("promptOutput").value);
+        setStatus("Prompt copied to clipboard.");
+      } catch (error) {
+        setStatus("Clipboard access is unavailable. Select and copy the prompt manually.", true);
+      }
+    }
+
+    async function playSound() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+        getSynthesize()(audioCtx, audioCtx.destination);
+        setStatus("Playing preview.");
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    async function exportSound() {
+      try {
+        const sampleRate = 44100;
+        const offlineCtx = new OfflineAudioContext(1, Math.ceil(sampleRate * getDuration()), sampleRate);
+        getSynthesize()(offlineCtx, offlineCtx.destination);
+        const renderedBuffer = await offlineCtx.startRendering();
+        const wavBlob = audioBufferToWav(trimSilence(renderedBuffer));
+        const url = URL.createObjectURL(wavBlob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = document.getElementById("filename").value.trim() || "generated-sound.wav";
+        link.click();
+        URL.revokeObjectURL(url);
+        setStatus("WAV downloaded.");
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    function trimSilence(buffer) {
+      if (document.getElementById("duration").value) return buffer;
+      const samples = buffer.getChannelData(0);
+      let lastSound = 0;
+      for (let index = samples.length - 1; index >= 0; index--) {
+        if (Math.abs(samples[index]) > 0.001) { lastSound = index; break; }
+      }
+      const length = Math.min(buffer.length, Math.max(lastSound + Math.ceil(buffer.sampleRate * 0.05), 1));
+      const trimmed = new OfflineAudioContext(buffer.numberOfChannels, length, buffer.sampleRate).createBuffer(buffer.numberOfChannels, length, buffer.sampleRate);
+      for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        trimmed.copyToChannel(buffer.getChannelData(channel).slice(0, length), channel);
+      }
+      return trimmed;
+    }
+
+    document.getElementById("codeInput").value = DEFAULT_CODE;
+    generatePrompt();
+
+    function audioBufferToWav(buffer) {
+      const numOfChan = buffer.numberOfChannels;
+      const length = buffer.length * numOfChan * 2 + 44;
+      const out = new DataView(new ArrayBuffer(length));
+      const channels = [];
+      let sampleRate = buffer.sampleRate;
+      let offset = 0;
+      let pos = 0;
+
+      function setUint16(data) { out.setUint16(pos, data, true); pos += 2; }
+      function setUint32(data) { out.setUint32(pos, data, true); pos += 4; }
+
+      // RIFF header
+      setUint32(0x46464952); // "RIFF"
+      setUint32(length - 8);
+      setUint32(0x45564157); // "WAVE"
+
+      // fmt chunk
+      setUint32(0x20746d66); // "fmt "
+      setUint32(16);         // Subchunk1Size
+      setUint16(1);          // PCM
+      setUint16(numOfChan);
+      setUint32(sampleRate);
+      setUint32(sampleRate * 2 * numOfChan); // byte rate
+      setUint16(numOfChan * 2);              // block align
+      setUint16(16);                         // bits per sample
+
+      // data chunk
+      setUint32(0x61746164); // "data"
+      setUint32(length - pos - 4);
+
+      for (let i = 0; i < buffer.numberOfChannels; i++) {
+        channels.push(buffer.getChannelData(i));
+      }
+
+      while (offset < buffer.length) {
+        for (let i = 0; i < numOfChan; i++) {
+          let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+          sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
+          out.setInt16(pos, sample, true);
+          pos += 2;
+        }
+        offset++;
+      }
+
+      return new Blob([out.buffer], { type: "audio/wav" });
+    }
+  </script>
+</body>
+</html>
