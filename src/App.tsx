@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { ActiveAnimal, AnimalType, AuthUser, GameStats, GameStatus } from './types/game';
-import { ANIMAL_LIST } from './config/assets';
+import type { ActiveAnimal, AnimalDefinition, AnimalType, AuthUser, GameStats, GameStatus } from './types/game';
+import {
+  ANIMAL_DEFINITIONS,
+  ANIMAL_FALLBACKS,
+  INITIAL_ANIMAL_LIST,
+  UNLOCKABLE_ANIMAL_LIST,
+} from './config/assets';
 import { soundManager } from './services/sound';
 import {
   getStoredHighScore,
@@ -34,6 +39,15 @@ export const App: React.FC = () => {
   const [flashEffect, setFlashEffect] = useState<'red' | 'green' | null>(null);
   const [isMuted, setIsMuted] = useState<boolean>(() => soundManager.getIsMuted());
 
+  // Dynamic Animal Pool Progression (New item unlocked every 15s)
+  const [activeAnimals, setActiveAnimals] = useState<AnimalDefinition[]>(INITIAL_ANIMAL_LIST);
+  const [remainingAnimals, setRemainingAnimals] = useState<AnimalDefinition[]>(UNLOCKABLE_ANIMAL_LIST);
+  const [gameElapsed, setGameElapsed] = useState<number>(0);
+  const [unlockedItemToast, setUnlockedItemToast] = useState<{
+    animal: AnimalDefinition;
+    id: number;
+  } | null>(null);
+
   // Modals
   const [isAuthOpen, setIsAuthOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
@@ -62,10 +76,15 @@ export const App: React.FC = () => {
   const isFrozenRef = useRef<boolean>(isFrozen);
   isFrozenRef.current = isFrozen;
 
+  const activeAnimalsRef = useRef<AnimalDefinition[]>(INITIAL_ANIMAL_LIST);
+  const remainingAnimalsRef = useRef<AnimalDefinition[]>(UNLOCKABLE_ANIMAL_LIST);
+  const gameElapsedRef = useRef<number>(0);
+
   const gameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const freezeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Synchronize server high score for current user on mount
   useEffect(() => {
@@ -118,20 +137,55 @@ export const App: React.FC = () => {
       clearTimeout(flashTimeoutRef.current);
       flashTimeoutRef.current = null;
     }
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
   }, []);
 
-  // Pick random animal according to probability table
-  const pickRandomAnimalType = (): AnimalType => {
-    const random = Math.random();
-    let cumulative = 0;
-    for (const animal of ANIMAL_LIST) {
-      cumulative += animal.probability;
-      if (random <= cumulative) {
+  // Pick random animal according to probability table from currently active pool
+  const pickRandomAnimalType = useCallback((): AnimalType => {
+    const pool = activeAnimalsRef.current;
+    if (!pool || pool.length === 0) return 'mouse';
+
+    const totalWeight = pool.reduce((acc, a) => acc + (a.probability || 0.1), 0);
+    let randomVal = Math.random() * totalWeight;
+
+    for (const animal of pool) {
+      randomVal -= (animal.probability || 0.1);
+      if (randomVal <= 0) {
         return animal.type;
       }
     }
-    return 'mouse';
-  };
+    return pool[0].type;
+  }, []);
+
+  // Unlock next animal into the active spawn pool after every 15 seconds
+  const unlockNextAnimal = useCallback(() => {
+    if (remainingAnimalsRef.current.length === 0) return;
+
+    const nextAnimal = remainingAnimalsRef.current[0];
+    const newRemaining = remainingAnimalsRef.current.slice(1);
+    const newActive = [...activeAnimalsRef.current, nextAnimal];
+
+    remainingAnimalsRef.current = newRemaining;
+    activeAnimalsRef.current = newActive;
+
+    setRemainingAnimals(newRemaining);
+    setActiveAnimals(newActive);
+
+    // Audio chime & notification banner
+    soundManager.playSfx('bonus');
+    setUnlockedItemToast({
+      animal: nextAnimal,
+      id: Date.now(),
+    });
+
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = setTimeout(() => {
+      setUnlockedItemToast(null);
+    }, 4000);
+  }, []);
 
   // Spawn random animals into empty cells
   const spawnAnimals = useCallback(() => {
@@ -158,14 +212,8 @@ export const App: React.FC = () => {
 
     chosenIndices.forEach((cellIdx) => {
       const animalType = pickRandomAnimalType();
-      const points =
-        animalType === 'mouse'
-          ? 10
-          : animalType === 'rabbit'
-          ? 20
-          : animalType === 'star'
-          ? 30
-          : -30;
+      const def = ANIMAL_DEFINITIONS[animalType];
+      const points = def ? def.points : 10;
 
       const instanceId = `${Date.now()}-${cellIdx}-${Math.random()}`;
       currentCells[cellIdx] = {
@@ -190,11 +238,12 @@ export const App: React.FC = () => {
     });
 
     setCells(currentCells);
-  }, []);
+  }, [pickRandomAnimalType]);
 
   // End Game
   const endGame = useCallback(() => {
     clearAllIntervals();
+    setUnlockedItemToast(null);
     setStatus('gameover');
     soundManager.playBgm('waiting');
 
@@ -229,7 +278,7 @@ export const App: React.FC = () => {
     setIsGameOverOpen(true);
   }, [clearAllIntervals, highScore, user, duration]);
 
-  // Start game intervals (spawning & countdown timer)
+  // Start game intervals (spawning & clock timer with 15s progression)
   const startIntervals = useCallback(() => {
     clearAllIntervals();
 
@@ -238,9 +287,10 @@ export const App: React.FC = () => {
       spawnAnimals();
     }, SPAWN_INTERVAL_MS);
 
-    // Timer loop if not infinite
-    if (duration !== null) {
-      timerIntervalRef.current = setInterval(() => {
+    // Clock loop: timer countdown and 15-second dynamic animal unlocks
+    timerIntervalRef.current = setInterval(() => {
+      // 1. Decrement duration if not infinite mode
+      if (duration !== null) {
         setTimeLeft((prev) => {
           if (prev === null) return null;
           if (prev <= 1) {
@@ -249,9 +299,17 @@ export const App: React.FC = () => {
           }
           return prev - 1;
         });
-      }, 1000);
-    }
-  }, [clearAllIntervals, duration, endGame, spawnAnimals]);
+      }
+
+      // 2. Track elapsed playing seconds and unlock new item after every 15s
+      gameElapsedRef.current += 1;
+      setGameElapsed(gameElapsedRef.current);
+
+      if (gameElapsedRef.current % 15 === 0) {
+        unlockNextAnimal();
+      }
+    }, 1000);
+  }, [clearAllIntervals, duration, endGame, spawnAnimals, unlockNextAnimal]);
 
   // Start a new game
   const handleStartGame = () => {
@@ -260,6 +318,16 @@ export const App: React.FC = () => {
 
     setScore(0);
     setTimeLeft(duration);
+    gameElapsedRef.current = 0;
+    setGameElapsed(0);
+    setUnlockedItemToast(null);
+
+    // Reset progression: base 4 items in active pool, remaining 10 in queue
+    activeAnimalsRef.current = [...INITIAL_ANIMAL_LIST];
+    remainingAnimalsRef.current = [...UNLOCKABLE_ANIMAL_LIST];
+    setActiveAnimals([...INITIAL_ANIMAL_LIST]);
+    setRemainingAnimals([...UNLOCKABLE_ANIMAL_LIST]);
+
     setCells(Array(GRID_SIZE).fill(null));
     setIsFrozen(false);
     setFlashEffect(null);
@@ -297,6 +365,7 @@ export const App: React.FC = () => {
   // Quit to Menu
   const handleQuitGame = () => {
     clearAllIntervals();
+    setUnlockedItemToast(null);
     setStatus('idle');
     setCells(Array(GRID_SIZE).fill(null));
     setIsFrozen(false);
@@ -316,6 +385,7 @@ export const App: React.FC = () => {
       const hitInstanceId = currentCell.instanceId;
       const targetType = currentCell.type;
       const points = currentCell.points;
+      const def = ANIMAL_DEFINITIONS[targetType];
 
       setCells((prev) => {
         const next = [...prev];
@@ -338,27 +408,29 @@ export const App: React.FC = () => {
           mouseHits: prev.mouseHits + (targetType === 'mouse' ? 1 : 0),
           rabbitHits: prev.rabbitHits + (targetType === 'rabbit' ? 1 : 0),
           starHits: prev.starHits + (targetType === 'star' ? 1 : 0),
-          hazardHits: prev.hazardHits + (targetType === 'snake' ? 1 : 0),
+          hazardHits: prev.hazardHits + (def?.isHazard ? 1 : 0),
         };
       });
 
       // Trigger Effects & Sound depending on item type
-      if (targetType === 'snake') {
+      if (def?.isHazard || points < 0) {
         soundManager.playSfx('damage');
         setFlashEffect('red');
         setIsFrozen(true);
+
+        const freezeDuration = def?.freezeDurationMs ?? 2000;
 
         if (freezeTimeoutRef.current) clearTimeout(freezeTimeoutRef.current);
         if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
 
         flashTimeoutRef.current = setTimeout(() => {
           setFlashEffect(null);
-        }, 1500);
+        }, Math.min(1500, freezeDuration));
 
         freezeTimeoutRef.current = setTimeout(() => {
           setIsFrozen(false);
-        }, 2000);
-      } else if (targetType === 'star') {
+        }, freezeDuration);
+      } else if (def?.isBonus || points >= 30) {
         soundManager.playSfx('bonus');
         setFlashEffect('green');
 
@@ -448,9 +520,46 @@ export const App: React.FC = () => {
               combo={stats.currentCombo}
               isPaused={status === 'paused'}
               isFrozen={isFrozen}
+              activeCount={activeAnimals.length}
+              totalItemsCount={INITIAL_ANIMAL_LIST.length + UNLOCKABLE_ANIMAL_LIST.length}
+              nextUnlockSeconds={
+                remainingAnimals.length > 0 ? 15 - (gameElapsed % 15) : null
+              }
+              activeAnimalEmojis={activeAnimals.map(
+                (a) => ANIMAL_FALLBACKS[a.type] || a.emoji
+              )}
               onTogglePause={handleTogglePause}
               onQuit={handleQuitGame}
             />
+
+            {/* Real-time Toast Alert when a new animal is unlocked every 15s */}
+            {unlockedItemToast && (
+              <div className="w-full max-w-xl mb-3 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500/20 via-sky-500/20 to-emerald-500/20 border-2 border-amber-400/60 backdrop-blur-md text-amber-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 shadow-xl shadow-amber-500/20 animate-bounce">
+                <span className="text-2xl select-none" role="img">
+                  {ANIMAL_FALLBACKS[unlockedItemToast.animal.type] || unlockedItemToast.animal.emoji}
+                </span>
+                <span>
+                  🎉 Vật phẩm mới xuất hiện:{' '}
+                  <strong className="text-white underline decoration-amber-400">
+                    {unlockedItemToast.animal.name}
+                  </strong>{' '}
+                  (
+                  <span
+                    className={
+                      unlockedItemToast.animal.points > 0
+                        ? 'text-emerald-400 font-extrabold'
+                        : 'text-rose-400 font-extrabold'
+                    }
+                  >
+                    {unlockedItemToast.animal.points > 0
+                      ? `+${unlockedItemToast.animal.points}`
+                      : unlockedItemToast.animal.points}{' '}
+                    điểm
+                  </span>
+                  )!
+                </span>
+              </div>
+            )}
 
             <GameBoard
               cells={cells}

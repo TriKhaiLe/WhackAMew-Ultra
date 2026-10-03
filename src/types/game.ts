@@ -1,14 +1,31 @@
-export type AnimalType = 'mouse' | 'rabbit' | 'snake' | 'star';
+export type AnimalType =
+  | 'mouse'
+  | 'rabbit'
+  | 'snake'
+  | 'star'
+  | 'cat'
+  | 'hamster'
+  | 'frog'
+  | 'fox'
+  | 'hedgehog'
+  | 'panda'
+  | 'monkey'
+  | 'bomb'
+  | 'pig'
+  | 'dragon';
 
 export interface AnimalDefinition {
   type: AnimalType;
   name: string;
-  image: string;
+  image?: string;
+  emoji: string;
   points: number;
   probability: number;
   description: string;
   isHazard?: boolean;
   isBonus?: boolean;
+  freezeDurationMs?: number;
+  unlockAfterSeconds?: number;
 }
 
 export interface ActiveAnimal {

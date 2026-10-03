@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Play, Sparkles, Clock, Infinity as InfinityIcon, AlertTriangle, Flame } from 'lucide-react';
-import { ANIMAL_LIST, ANIMAL_FALLBACKS } from '../config/assets';
+import { INITIAL_ANIMAL_LIST, UNLOCKABLE_ANIMAL_LIST, ANIMAL_FALLBACKS } from '../config/assets';
 
 interface StartScreenProps {
   highScore: number;
@@ -17,7 +17,6 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 }) => {
   const isInfinite = duration === null;
   const [tempDuration, setTempDuration] = useState<number>(duration ?? 15);
-  const [imageErrorMap, setImageErrorMap] = useState<Record<string, boolean>>({});
 
   const handleDurationChange = (val: number) => {
     const safeVal = Math.max(15, val);
@@ -115,53 +114,95 @@ export const StartScreen: React.FC<StartScreenProps> = ({
           </p>
         </div>
 
-        {/* Item Guide Grid */}
-        <div className="space-y-2">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider text-left">
-            Vật Phẩm & Điểm Thưởng
-          </p>
-          <div className="grid grid-cols-4 gap-2 sm:gap-2.5">
-            {ANIMAL_LIST.map((animal) => {
-              const hasError = imageErrorMap[animal.type];
-              const isPositive = animal.points > 0;
+        {/* Item Guide Section */}
+        <div className="space-y-3.5 text-left">
+          {/* Starter Items */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <span>Vật Phẩm Khởi Đầu</span>
+                <span className="text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-1.5 py-0.2 rounded border border-amber-400/20">
+                  4 mặc định
+                </span>
+              </p>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {INITIAL_ANIMAL_LIST.map((animal) => {
+                const isPositive = animal.points > 0;
+                const emoji = ANIMAL_FALLBACKS[animal.type] || animal.emoji;
 
-              return (
-                <div
-                  key={animal.type}
-                  className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-2.5 flex flex-col items-center justify-center gap-1.5 transition-all hover:border-slate-700"
-                  title={animal.description}
-                >
-                  <div className="w-10 h-10 flex items-center justify-center relative">
-                    {!hasError ? (
-                      <img
-                        src={animal.image}
-                        alt={animal.name}
-                        className="w-full h-full object-contain filter drop-shadow-sm select-none"
-                        onError={() =>
-                          setImageErrorMap((prev) => ({ ...prev, [animal.type]: true }))
-                        }
-                      />
-                    ) : (
-                      <span className="text-2xl select-none" role="img" aria-label={animal.name}>
-                        {ANIMAL_FALLBACKS[animal.type] || '❓'}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-300 leading-tight">
-                    {animal.name}
-                  </span>
-                  <span
-                    className={`text-xs font-black px-1.5 py-0.5 rounded-md ${
-                      isPositive
-                        ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
-                        : 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
-                    }`}
+                return (
+                  <div
+                    key={animal.type}
+                    className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-2 flex flex-col items-center justify-center gap-1 transition-all hover:border-slate-700"
+                    title={animal.description}
                   >
-                    {isPositive ? `+${animal.points}` : animal.points}
-                  </span>
-                </div>
-              );
-            })}
+                    <span className="text-3xl select-none filter drop-shadow-sm py-0.5" role="img" aria-label={animal.name}>
+                      {emoji}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-300 leading-tight text-center truncate w-full">
+                      {animal.name}
+                    </span>
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                        isPositive
+                          ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                          : 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
+                      }`}
+                    >
+                      {isPositive ? `+${animal.points}` : animal.points}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Unlockable Items Every 15s */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Mở Khóa Mỗi 15 Giây</span>
+                <span className="text-[10px] font-semibold text-sky-400 bg-sky-400/10 px-1.5 py-0.2 rounded border border-sky-400/20">
+                  +10 vật phẩm
+                </span>
+              </p>
+              <span className="text-[10px] text-slate-400">Xuất hiện dần khi chơi</span>
+            </div>
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+              {UNLOCKABLE_ANIMAL_LIST.map((animal) => {
+                const isPositive = animal.points > 0;
+                const emoji = ANIMAL_FALLBACKS[animal.type] || animal.emoji;
+
+                return (
+                  <div
+                    key={animal.type}
+                    className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-1.5 sm:p-2 flex flex-col items-center justify-center gap-1 transition-all hover:border-slate-700 relative overflow-hidden"
+                    title={`${animal.name}: ${animal.description} (Mở sau ${animal.unlockAfterSeconds}s)`}
+                  >
+                    <span className="absolute top-1 right-1 text-[8px] font-bold text-sky-400 font-mono bg-sky-400/10 px-1 rounded">
+                      +{animal.unlockAfterSeconds}s
+                    </span>
+                    <span className="text-2xl sm:text-3xl select-none filter drop-shadow-sm pt-2" role="img" aria-label={animal.name}>
+                      {emoji}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-300 leading-tight text-center truncate w-full">
+                      {animal.name}
+                    </span>
+                    <span
+                      className={`text-[9px] font-black px-1 py-0.5 rounded ${
+                        isPositive
+                          ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                          : 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
+                      }`}
+                    >
+                      {isPositive ? `+${animal.points}` : animal.points}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -169,8 +210,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
         <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left text-xs text-amber-200/90">
           <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <p>
-            <strong className="text-amber-300">Cảnh báo:</strong> Đập trúng Khoai tây độc sẽ bị trừ
-            30 điểm và làm đóng băng toàn bộ bàn chơi trong 2 giây!
+            <strong className="text-amber-300">Cảnh báo:</strong> Đập trúng bẫy nguy hiểm (Khoai tây, Nhím gai, Bom) sẽ bị trừ điểm và đóng băng bàn chơi!
           </p>
         </div>
 

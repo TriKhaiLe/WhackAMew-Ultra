@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { ActiveAnimal } from '../types/game';
 import { ANIMAL_DEFINITIONS, ANIMAL_FALLBACKS } from '../config/assets';
 
@@ -15,8 +15,6 @@ export const Cell: React.FC<CellProps> = ({
   isBoardDisabled,
   onWhack,
 }) => {
-  const [imageError, setImageError] = useState(false);
-
   const def = animal ? ANIMAL_DEFINITIONS[animal.type] : null;
 
   const triggerWhack = (clientX?: number, clientY?: number) => {
@@ -24,6 +22,8 @@ export const Cell: React.FC<CellProps> = ({
       onWhack(index, clientX, clientY);
     }
   };
+
+  const emoji = animal ? ANIMAL_FALLBACKS[animal.type] || def?.emoji || '🐭' : '🐭';
 
   return (
     <div
@@ -49,35 +49,25 @@ export const Cell: React.FC<CellProps> = ({
       {animal && def && (
         <div
           data-animal-type={animal.type}
-          className={`relative z-10 w-4/5 h-4/5 flex items-center justify-center transition-transform select-none ${
-            animal.isHit ? 'animate-hit' : 'animate-appear'
+          className={`relative z-10 w-full h-full flex flex-col items-center justify-center transition-transform select-none ${
+            animal.isHit ? 'animate-hit scale-125 opacity-80' : 'animate-appear'
           }`}
         >
           {/* Subtle Glow depending on item type */}
           {def.isBonus && (
-            <div className="absolute inset-0 rounded-full bg-emerald-400/20 blur-md pointer-events-none animate-pulse" />
+            <div className="absolute inset-2 rounded-full bg-amber-400/25 blur-lg pointer-events-none animate-pulse" />
           )}
           {def.isHazard && (
-            <div className="absolute inset-0 rounded-full bg-rose-500/20 blur-md pointer-events-none" />
+            <div className="absolute inset-2 rounded-full bg-rose-600/30 blur-lg pointer-events-none" />
           )}
 
-          {!imageError ? (
-            <img
-              src={def.image}
-              alt={def.name}
-              draggable={false}
-              className="w-full h-full object-contain filter drop-shadow-lg select-none pointer-events-none"
-              onError={() => setImageError(true)}
-            />
-          ) : (
-            <span
-              className="text-4xl sm:text-5xl select-none filter drop-shadow-md pointer-events-none"
-              role="img"
-              aria-label={def.name}
-            >
-              {ANIMAL_FALLBACKS[animal.type] || '🐭'}
-            </span>
-          )}
+          <span
+            className="text-4xl sm:text-5xl md:text-6xl select-none filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.4)] pointer-events-none transform transition-transform"
+            role="img"
+            aria-label={def.name}
+          >
+            {emoji}
+          </span>
         </div>
       )}
     </div>

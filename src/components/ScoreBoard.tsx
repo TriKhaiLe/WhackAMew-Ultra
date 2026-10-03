@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pause, Play, LogOut, Clock, Flame, ShieldAlert } from 'lucide-react';
+import { Pause, Play, LogOut, Clock, Flame, ShieldAlert, Sparkles } from 'lucide-react';
 
 interface ScoreBoardProps {
   score: number;
@@ -8,6 +8,10 @@ interface ScoreBoardProps {
   combo: number;
   isPaused: boolean;
   isFrozen: boolean;
+  activeCount?: number;
+  totalItemsCount?: number;
+  nextUnlockSeconds?: number | null;
+  activeAnimalEmojis?: string[];
   onTogglePause: () => void;
   onQuit: () => void;
 }
@@ -19,6 +23,10 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   combo,
   isPaused,
   isFrozen,
+  activeCount = 4,
+  totalItemsCount = 14,
+  nextUnlockSeconds = null,
+  activeAnimalEmojis = [],
   onTogglePause,
   onQuit,
 }) => {
@@ -27,7 +35,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   return (
     <div className="w-full max-w-xl mx-auto px-4 mb-4 select-none">
       {/* Top Stats Banner */}
-      <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mb-3">
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mb-2.5">
         {/* Score Card */}
         <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-2xl p-2.5 sm:p-3 text-center shadow-lg relative overflow-hidden">
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
@@ -76,11 +84,35 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         </div>
       </div>
 
+      {/* Active Items & Next Unlock Info */}
+      <div className="mb-2.5 px-3 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800/90 backdrop-blur-md flex items-center justify-between text-xs gap-2">
+        <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-amber-400" />
+            Vật phẩm ({activeCount}/{totalItemsCount}):
+          </span>
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5 select-none text-base">
+            {activeAnimalEmojis.map((em, i) => (
+              <span key={i} title={`Vật phẩm ${i + 1}`}>
+                {em}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {nextUnlockSeconds !== null && nextUnlockSeconds !== undefined && (
+          <div className="shrink-0 text-[11px] font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-lg border border-amber-500/30 flex items-center gap-1">
+            <span className="hidden sm:inline">Mở thêm sau:</span>
+            <strong className="text-amber-400 font-mono">{nextUnlockSeconds}s</strong>
+          </div>
+        )}
+      </div>
+
       {/* Freeze Warning Alert */}
       {isFrozen && (
         <div className="mb-3 px-4 py-2 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center justify-center gap-2 animate-bounce">
           <ShieldAlert className="w-4 h-4 text-rose-400" />
-          <span>BÀN CHƠI BỊ KHÓA 2 GIÂY DO ĐẬP TRÚNG KHOAI TÂY!</span>
+          <span>BÀN CHƠI ĐANG BỊ KHÓA DO ĐẬP TRÚNG BẪY NGUY HIỂM!</span>
         </div>
       )}
 
